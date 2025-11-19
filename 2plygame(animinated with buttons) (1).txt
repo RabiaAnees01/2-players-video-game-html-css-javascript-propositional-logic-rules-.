@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Two Players Video Game.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+        background: linear-gradient(#dfab73, #c96b6b);
+    }
+
+    /* Character sprites */
+    .fighter {
+        width: 140px;
+        height: 140px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        position: relative;
+        transition: transform 0.4s ease;
+        cursor: pointer;
+    }
+
+    #fighterA { background-image: url('https://img2.clipart-library.com/28/football-player-cartoon-clipart/football-player-cartoon-clipart-15.jpg'); }
+    #fighterB { background-image: url('https://img2.clipart-library.com/28/football-player-cartoon-clipart/football-player-cartoon-clipart-17.jpg'); }
+
+    /* Attack lunge */
+    .attackA { transform: translateX(80px) scale(1.1); }
+    .attackB { transform: translateX(-80px) scale(1.1); }
+
+    /* Defense shield */
+    .shield {
+        position: absolute;
+        width: 70px;
+        height: 70px;
+        background-image: url('https://i.imgur.com/Su7oFNg.png');
+        background-size: contain;
+        background-repeat: no-repeat;
+        top: 20px;
+        left: 35px;
+        animation: pop 0.3s ease-out;
+    }
+
+    @keyframes pop {
+        0% { transform: scale(0.2); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Heal glow */
+    .heal-glow {
+        animation: glow 0.6s ease-out;
+    }
+    @keyframes glow {
+        0% { filter: brightness(1); }
+        50% { filter: brightness(2); }
+        100% { filter: brightness(1); }
+    }
+
+    /* Damage shake */
+    .shake {
+        animation: shake 0.4s;
+    }
+    @keyframes shake {
+        0%,100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        50% { transform: translateX(10px); }
+        75% { transform: translateX(-6px); }
+    }
+
+    /* Floating text */
+    .float-text {
+        position: absolute;
+        font-weight: bold;
+        font-size: 22px;
+        opacity: 0;
+        animation: floatUp 1s ease-out;
+        pointer-events: none;
+    }
+    @keyframes floatUp {
+        0% { transform: translateY(20px); opacity: 1; }
+        100% { transform: translateY(-40px); opacity: 0; }
+    }
+
+    /* Health bar */
+    .hpbar {
+        height: 12px;
+        background: #fc52bb;
+        border-radius: 6px;
+        margin-top: 6px;
+        overflow: hidden;
+    }
+    .hpfill {
+        height: 100%;
+        transition: width 0.4s ease;
+    }
+
+    /* ACTION WHEEL */
+    #actionWheel {
+        position: fixed;
+        bottom: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgb(233, 59, 181);
+        border-radius: 14px;
+        padding: 12px 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        display: flex;
+        gap: 10px;
+        transition: bottom 0.4s ease;
+        z-index: 50;
+    }
+    #actionWheel.show {
+        bottom: 20px;
+    }
+
+    .wheel-btn {
+        font-size: 22px;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+    .wheel-btn:active {
+        transform: scale(0.9);
+    }
+</style>
+</head>
+
+<body class="flex flex-col items-center justify-center p-6">
+
+<h1 class="text-3xl font-extrabold mb-6">⚔️ Two Players Video Game.</h1>
+
+<!-- Battle Arena -->
+<div class="relative w-full max-w-3xl h-64 bg-orange-100 rounded-lg shadow-inner flex items-end justify-between px-10 py-8">
+
+    <!-- floating text -->
+    <div id="floatA" class="float-text text-red-600"></div>
+    <div id="floatB" class="float-text text-blue-600"></div>
+
+    <!-- Player A -->
+    <div class="text-center">
+        <div id="fighterA" class="fighter"></div>
+        <div class="text-xl font-bold text-red-700 mt-1">Player A</div>
+        <div id="hpA" class="text-2xl font-mono">50</div>
+        <div class="hpbar"><div id="fillA" class="hpfill bg-red-500"></div></div>
+    </div>
+
+    <!-- Player B -->
+    <div class="text-center">
+        <div id="fighterB" class="fighter"></div>
+        <div class="text-xl font-bold text-blue-700 mt-1">Player B</div>
+        <div id="hpB" class="text-2xl font-mono">50</div>
+        <div class="hpbar"><div id="fillB" class="hpfill bg-blue-500"></div></div>
+    </div>
+</div>
+
+<h2 id="turnStatus" class="text-xl font-semibold mt-6">Player A’s turn — click Player A</h2>
+
+<!-- BATTLE LOG -->
+<div class="bg-gray-100 w-full max-w-xl p-4 rounded-lg shadow-inner mt-6 h-40 overflow-y-auto text-sm" id="log">
+    <p>The match begins!</p>
+</div>
+
+<!-- ACTION WHEEL -->
+<div id="actionWheel">
+    <div id="btnAttack" class="wheel-btn bg-red-500 text-white">🗡️ Attack</div>
+    <div id="btnDefend" class="wheel-btn bg-gray-600 text-white">🛡️ Defend</div>
+    <div id="btnHeal" class="wheel-btn bg-green-500 text-white">💚 Heal</div>
+</div>
+
+<script>
+/* GAME STATE */
+let health = { A: 50, B: 50 };
+let turn = 0;
+let currentPlayer = "A";
+let selectedAction = null;
+
+/* DOM REFERENCES */
+const fighterA = document.getElementById("fighterA");
+const fighterB = document.getElementById("fighterB");
+const hpA = document.getElementById("hpA");
+const hpB = document.getElementById("hpB");
+const fillA = document.getElementById("fillA");
+const fillB = document.getElementById("fillB");
+const logBox = document.getElementById("log");
+const turnStatus = document.getElementById("turnStatus");
+const wheel = document.getElementById("actionWheel");
+
+/* LOGIC OPERATORS */
+const NOT = p => !p;
+const AND = (p, q) => p && q;
+
+function logic_damage(ATK, DEF) { return AND(ATK, NOT(DEF)); }
+function logic_block(DEF) { return DEF; }
+function logic_heal(HL) { return HL; }
+
+/* FLOAT TEXT */
+function floatText(player, text, color) {
+    const el = document.getElementById("float" + player);
+    el.textContent = text;
+    el.style.color = color;
+    el.style.animation = "none";
+    void el.offsetWidth;
+    el.style.animation = "floatUp 1s ease-out";
+}
+
+/* UPDATE UI */
+function updateUI() {
+    hpA.textContent = health.A;
+    hpB.textContent = health.B;
+    fillA.style.width = (health.A / 50 * 100) + "%";
+    fillB.style.width = (health.B / 50 * 100) + "%";
+}
+
+/* LOG */
+function log(msg) {
+    const p = document.createElement("p");
+    p.innerHTML = msg;
+    logBox.prepend(p);
+}
+
+/* ACTION WHEEL HANDLING */
+function showWheel() {
+    wheel.classList.add("show");
+}
+function hideWheel() {
+    wheel.classList.remove("show");
+}
+
+/* PLAYER CLICK */
+fighterA.onclick = () => {
+    if (currentPlayer === "A") showWheel();
+};
+fighterB.onclick = () => {
+    if (currentPlayer === "B") showWheel();
+};
+
+/* ACTION BUTTONS */
+document.getElementById("btnAttack").onclick = () => chooseAction("attack");
+document.getElementById("btnDefend").onclick = () => chooseAction("defend");
+document.getElementById("btnHeal").onclick = () => chooseAction("heal");
+
+/* MAIN ACTION EXECUTION */
+function chooseAction(action) {
+    hideWheel();
+
+    let player = currentPlayer;
+    let opponent = player === "A" ? "B" : "A";
+    let actor = player === "A" ? fighterA : fighterB;
+    let target = opponent === "A" ? fighterA : fighterB;
+
+    const ATK = action === "attack";
+    const DEF = action === "defend";
+    const HL = action === "heal";
+
+    log(`Player ${player} chooses <b>${action}</b>`);
+
+    /* HEAL */
+    if (logic_heal(HL)) {
+        health[player] += 8;
+        actor.classList.add("heal-glow");
+        floatText(player, "+8 💚", "green");
+        setTimeout(() => actor.classList.remove("heal-glow"), 600);
+        endTurn();
+        return;
+    }
+
+    /* ATTACK */
+    if (logic_damage(ATK, DEF)) {
+        actor.classList.add(player === "A" ? "attackA" : "attackB");
+
+        setTimeout(() => {
+            actor.classList.remove("attackA", "attackB");
+            health[opponent] -= 10;
+            target.classList.add("shake");
+            floatText(opponent, "-10 💥", "red");
+            setTimeout(() => target.classList.remove("shake"), 300);
+            endTurn();
+        }, 400);
+        return;
+    }
+
+    /* DEFEND */
+    if (logic_block(DEF)) {
+        const shield = document.createElement("div");
+        shield.classList.add("shield");
+        actor.appendChild(shield);
+        floatText(player, "BLOCK 🛡️", "#444");
+        setTimeout(() => shield.remove(), 500);
+        endTurn();
+        return;
+    }
+
+    endTurn();
+}
+
+/* END TURN */
+function endTurn() {
+    updateUI();
+
+    if (health.A <= 0 || health.B <= 0) {
+        turnStatus.textContent =
+            health.A <= 0 ? "Player B Wins!" : "Player A Wins!";
+        return;
+    }
+
+    currentPlayer = currentPlayer === "A" ? "B" : "A";
+    turnStatus.textContent = `Player ${currentPlayer}’s turn — click Player ${currentPlayer}`;
+}
+</script>
+
+</body>
+</html>
